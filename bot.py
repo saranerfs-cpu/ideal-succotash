@@ -1,12 +1,11 @@
 import asyncio
 from datetime import datetime
+from aiogram import Bot
+import requests
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
-# ==================================================
+# ============================================
 # ДАННЫЕ
-# ==================================================
+# ============================================
 
 BOT_TOKEN = "8976617638:AAEuq3jTKCr9vL61wuCFhOIGBq8d0hheAIA"
 
@@ -14,201 +13,77 @@ CHAT_ID = "5296078628"
 
 TIKTOK_USERNAME = "stxz.ed1ts"
 
-# ==================================================
-# BOT
-# ==================================================
+# ============================================
+# БОТ
+# ============================================
 
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
 
-# ==================================================
-# КНОПКИ
-# ==================================================
-
-keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-
-keyboard.add(
-    KeyboardButton("📊 Статистика")
-)
-
-keyboard.add(
-    KeyboardButton("👁 Теневой бан")
-)
-
-keyboard.add(
-    KeyboardButton("🔥 Проверить")
-)
-
-# ==================================================
+# ============================================
 # ПАМЯТЬ
-# ==================================================
+# ============================================
 
 old_videos = {}
 
-stats = {
-    "likes": 0,
-    "comments": 0,
-    "shares": 0,
-    "followers": 0
-}
-
-# ==================================================
+# ============================================
 # ЭМОДЗИ
-# ==================================================
+# ============================================
 
 LIKE = "❤️"
 COMMENT = "💬"
 VIDEO = "🎬"
 SHARE = "📤"
-FOLLOW = "👥"
 FIRE = "🔥"
 
-# ==================================================
-# ПОЛУЧЕНИЕ ВИДЕО
-# ==================================================
+# ============================================
+# ФЕЙКОВЫЕ ДАННЫЕ ВИДЕО
+# ============================================
 
 def get_videos():
 
-    fake_data = [
+    return [
         {
             "id": "1",
             "title": "TikTok Video",
-            "likes": 120,
-            "comments": 14,
-            "shares": 5,
+            "likes": 100,
+            "comments": 5,
+            "shares": 2,
             "url": f"https://www.tiktok.com/@{TIKTOK_USERNAME}/video/1"
         }
     ]
 
-    return fake_data
+# ============================================
+# ОТПРАВКА
+# ============================================
 
-# ==================================================
-# ТЕНЕВОЙ БАН
-# ==================================================
-
-def check_shadow(video):
-
-    estimated_views = video["likes"] * 10
-
-    if estimated_views < 100:
-        return True
-
-    return False
-
-# ==================================================
-# КРАСИВОЕ СООБЩЕНИЕ
-# ==================================================
-
-async def send_pretty(video, event, extra=""):
+async def send_message(video, event):
 
     text = f"""
-🔥 <b>TikTok Monitor</b>
+{FIRE} <b>TikTok Monitor</b>
 
 {event}
 
-🎥 <b>Видео:</b>
-{video['title']}
+🎥 <b>{video['title']}</b>
 
-❤️ Лайки:
-<b>{video['likes']}</b>
+❤️ Лайки: <b>{video['likes']}</b>
+💬 Комменты: <b>{video['comments']}</b>
+📤 Репосты: <b>{video['shares']}</b>
 
-💬 Комменты:
-<b>{video['comments']}</b>
-
-📤 Репосты:
-<b>{video['shares']}</b>
-
-🔗 Ссылка:
-{video['url']}
-
-{extra}
+🔗 {video['url']}
 
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 """
 
     await bot.send_message(
-        chat_id=CHAT_ID,
-        text=text,
+        CHAT_ID,
+        text,
         parse_mode="HTML",
         disable_web_page_preview=False
     )
 
-# ==================================================
-# СТАТИСТИКА
-# ==================================================
-
-@dp.message_handler(text="📊 Статистика")
-async def stats_handler(message: types.Message):
-
-    text = f"""
-📊 <b>Статистика за час</b>
-
-❤️ Лайки:
-<b>{stats['likes']}</b>
-
-💬 Комменты:
-<b>{stats['comments']}</b>
-
-📤 Репосты:
-<b>{stats['shares']}</b>
-
-👥 Подписчики:
-<b>{stats['followers']}</b>
-"""
-
-    await bot.send_message(
-        chat_id=CHAT_ID,
-        text=text,
-        parse_mode="HTML"
-    )
-
-# ==================================================
-# ТЕНЕВОЙ БАН
-# ==================================================
-
-@dp.message_handler(text="👁 Теневой бан")
-async def shadow_handler(message: types.Message):
-
-    videos = get_videos()
-
-    result = "✅ Теневого бана нет"
-
-    for video in videos:
-
-        if check_shadow(video):
-
-            result = """
-⚠️ Возможен теневой бан
-
-• Малый охват
-• Видео плохо залетает
-• Низкие просмотры
-"""
-
-    await bot.send_message(
-        chat_id=CHAT_ID,
-        text=result
-    )
-
-# ==================================================
-# РУЧНАЯ ПРОВЕРКА
-# ==================================================
-
-@dp.message_handler(text="🔥 Проверить")
-async def manual_check(message: types.Message):
-
-    videos = get_videos()
-
-    for video in videos:
-
-        await send_pretty(
-            video,
-            "🔥 Ручная проверка"
-        )
-
-# ==================================================
-# МОНИТОРИНГ
-# ==================================================
+# ============================================
+# МОНИТОР
+# ============================================
 
 async def monitor():
 
@@ -224,8 +99,6 @@ async def monitor():
 
                 video_id = video["id"]
 
-                # НОВОЕ ВИДЕО
-
                 if video_id not in old_videos:
 
                     old_videos[video_id] = {
@@ -234,58 +107,39 @@ async def monitor():
                         "shares": video["shares"]
                     }
 
-                    await send_pretty(
+                    await send_message(
                         video,
-                        "🎬 <b>Новое видео опубликовано!</b>"
+                        f"{VIDEO} <b>Новое видео!</b>"
                     )
 
                 else:
 
                     old = old_videos[video_id]
 
-                    # ЛАЙКИ
+                    if video["likes"] > old["likes"]:
 
-                    if video["likes"] >= old["likes"] + 10:
-
-                        await send_pretty(
+                        await send_message(
                             video,
-                            "❤️ <b>+10 лайков!</b>"
+                            f"{LIKE} <b>Новые лайки!</b>"
                         )
-
-                        stats["likes"] += 10
 
                         old["likes"] = video["likes"]
 
-                    # КОММЕНТЫ
-
                     if video["comments"] > old["comments"]:
 
-                        await send_pretty(
+                        await send_message(
                             video,
-                            "💬 <b>Новый комментарий!</b>",
-                            extra="""
-👤 Пользователь:
-someone
-
-💬 Комментарий:
-Очень круто 🔥
-"""
+                            f"{COMMENT} <b>Новый комментарий!</b>"
                         )
-
-                        stats["comments"] += 1
 
                         old["comments"] = video["comments"]
 
-                    # РЕПОСТЫ
-
                     if video["shares"] > old["shares"]:
 
-                        await send_pretty(
+                        await send_message(
                             video,
-                            "📤 <b>Кто-то поделился видео!</b>"
+                            f"{SHARE} <b>Новый репост!</b>"
                         )
-
-                        stats["shares"] += 1
 
                         old["shares"] = video["shares"]
 
@@ -293,32 +147,26 @@ someone
 
         except Exception as e:
 
-            print("ERROR:", e)
+            print(e)
 
             await asyncio.sleep(10)
 
-# ==================================================
-# START
-# ==================================================
+# ============================================
+# СТАРТ
+# ============================================
 
-async def on_startup(dp):
+async def main():
 
     await bot.send_message(
-        chat_id=CHAT_ID,
-        text="🔥 TikTok Monitor запущен!",
-        reply_markup=keyboard
+        CHAT_ID,
+        f"{FIRE} Бот запущен!"
     )
 
-    asyncio.create_task(
-        monitor()
-    )
+    await monitor()
 
-# ==================================================
+# ============================================
 # RUN
-# ==================================================
+# ============================================
 
-executor.start_polling(
-    dp,
-    skip_updates=True,
-    on_startup=on_startup
-)
+if __name__ == "__main__":
+    asyncio.run(main())
