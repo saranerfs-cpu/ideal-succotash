@@ -49,6 +49,15 @@ old_videos = {}
 
 old_followers = 0
 
+last_video = {
+    "id": "1",
+    "title": "TikTok Video",
+    "likes": 10,
+    "comments": 3,
+    "shares": 1,
+    "url": f"https://www.tiktok.com/@{TIKTOK_USERNAME}/video/1"
+}
+
 hour_stats = {
     "likes": 0,
     "comments": 0,
@@ -66,10 +75,13 @@ keyboard = ReplyKeyboardMarkup(
             KeyboardButton(text="📊 Статистика")
         ],
         [
-            KeyboardButton(text="🔥 Проверить")
+            KeyboardButton(text="🎬 Последнее видео")
         ],
         [
             KeyboardButton(text="👁 Теневой бан")
+        ],
+        [
+            KeyboardButton(text="🔥 Проверить")
         ]
     ],
     resize_keyboard=True
@@ -141,6 +153,8 @@ def get_followers():
 
 def get_videos():
 
+    global last_video
+
     fake_data = [
         {
             "id": "1",
@@ -156,6 +170,8 @@ def get_videos():
             "title": "TikTok Video"
         }
     ]
+
+    last_video = fake_data[0]
 
     return fake_data
 
@@ -174,7 +190,7 @@ def check_shadow_ban(video):
     return False
 
 # ============================================
-# MESSAGE
+# BEAUTIFUL MESSAGE
 # ============================================
 
 async def send_pretty_message(
@@ -188,18 +204,25 @@ async def send_pretty_message(
 
 {event_type}
 
-🎥 <b>{video['title']}</b>
+👤 Аккаунт:
+<a href="https://www.tiktok.com/@{TIKTOK_USERNAME}">@{TIKTOK_USERNAME}</a>
+
+━━━━━━━━━━━━━━━
+
+🎬 <b>{video['title']}</b>
 
 ❤️ Лайки:
 <b>{video['likes']}</b>
 
-💬 Комменты:
+💬 Комментарии:
 <b>{video['comments']}</b>
 
 📤 Репосты:
 <b>{video['shares']}</b>
 
-🔗 {video['url']}
+━━━━━━━━━━━━━━━
+
+🔗 <a href="{video['url']}">Открыть видео</a>
 
 {extra_text}
 
@@ -221,18 +244,37 @@ async def send_pretty_message(
 async def start_handler(message: Message):
 
     text = f"""
-🔥 <b>TikTok Monitor запущен!</b>
+🔥 <b>TikTok Monitor</b>
+
+✅ Бот успешно запущен
 
 👤 Аккаунт:
+<a href="https://www.tiktok.com/@{TIKTOK_USERNAME}">
 @{TIKTOK_USERNAME}
+</a>
 
-✅ Бот работает
+━━━━━━━━━━━━━━━
+
+📊 Доступные функции:
+
+• Статистика
+• Последнее видео
+• Проверка теневого бана
+• Мониторинг лайков
+• Мониторинг подписчиков
+• Мониторинг репостов
+• Мониторинг комментариев
+
+━━━━━━━━━━━━━━━
+
+⚡ Выберите действие кнопками ниже
 """
 
     await message.answer(
         text,
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=keyboard,
+        disable_web_page_preview=True
     )
 
 # ============================================
@@ -242,8 +284,12 @@ async def start_handler(message: Message):
 @dp.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message):
 
+    followers = get_followers()
+
     text = f"""
-📊 <b>Статистика за час</b>
+📊 <b>Статистика за последний час</b>
+
+━━━━━━━━━━━━━━━
 
 ❤️ Лайки:
 <b>{hour_stats['likes']}</b>
@@ -256,10 +302,87 @@ async def stats_handler(message: Message):
 
 👥 Подписчики:
 <b>{hour_stats['followers']}</b>
+
+━━━━━━━━━━━━━━━
+
+👤 Всего подписчиков:
+<b>{followers}</b>
 """
 
     await message.answer(
         text,
+        parse_mode="HTML"
+    )
+
+# ============================================
+# LAST VIDEO BUTTON
+# ============================================
+
+@dp.message(F.text == "🎬 Последнее видео")
+async def last_video_handler(message: Message):
+
+    text = f"""
+🎬 <b>Последнее видео</b>
+
+━━━━━━━━━━━━━━━
+
+👤 Аккаунт:
+<a href="https://www.tiktok.com/@{TIKTOK_USERNAME}">
+@{TIKTOK_USERNAME}
+</a>
+
+━━━━━━━━━━━━━━━
+
+❤️ Лайки:
+<b>{last_video['likes']}</b>
+
+💬 Комментарии:
+<b>{last_video['comments']}</b>
+
+📤 Репосты:
+<b>{last_video['shares']}</b>
+
+━━━━━━━━━━━━━━━
+
+🔗 <a href="{last_video['url']}">Открыть видео</a>
+"""
+
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=False
+    )
+
+# ============================================
+# SHADOW BUTTON
+# ============================================
+
+@dp.message(F.text == "👁 Теневой бан")
+async def shadow_handler(message: Message):
+
+    videos = get_videos()
+
+    result = """
+✅ <b>Теневого бана нет</b>
+
+Видео набирают активность нормально
+"""
+
+    for video in videos:
+
+        if check_shadow_ban(video):
+
+            result = """
+⚠️ <b>Возможен теневой бан</b>
+
+Причины:
+• Малый охват
+• Низкая активность
+• Видео плохо залетают
+"""
+
+    await message.answer(
+        result,
         parse_mode="HTML"
     )
 
@@ -276,33 +399,8 @@ async def check_handler(message: Message):
 
         await send_pretty_message(
             video,
-            "🔥 Ручная проверка"
+            "🔥 <b>Ручная проверка</b>"
         )
-
-# ============================================
-# SHADOW BUTTON
-# ============================================
-
-@dp.message(F.text == "👁 Теневой бан")
-async def shadow_handler(message: Message):
-
-    videos = get_videos()
-
-    result = "✅ Теневого бана нет"
-
-    for video in videos:
-
-        if check_shadow_ban(video):
-
-            result = """
-⚠️ Возможен теневой бан
-
-• Малый охват
-• Видео плохо залетает
-• Низкие просмотры
-"""
-
-    await message.answer(result)
 
 # ============================================
 # FOLLOWERS MONITOR
@@ -331,11 +429,22 @@ async def monitor_followers():
                 text = f"""
 👥 <b>Новые подписчики!</b>
 
-👤 Всего:
+━━━━━━━━━━━━━━━
+
+👤 Аккаунт:
+<a href="https://www.tiktok.com/@{TIKTOK_USERNAME}">
+@{TIKTOK_USERNAME}
+</a>
+
+━━━━━━━━━━━━━━━
+
+👥 Всего:
 <b>{followers}</b>
 
 ➕ Пришло:
 <b>+{diff}</b>
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
 """
 
                 await bot.send_message(
@@ -389,9 +498,9 @@ async def monitor_videos():
 
                     old = old_videos[video_id]
 
-                    # ======================
+                    # =======================
                     # LIKES
-                    # ======================
+                    # =======================
 
                     if video["likes"] >= old["likes"] + 10:
 
@@ -404,9 +513,9 @@ async def monitor_videos():
 
                         old["likes"] = video["likes"]
 
-                    # ======================
+                    # =======================
                     # COMMENTS
-                    # ======================
+                    # =======================
 
                     if video["comments"] > old["comments"]:
 
@@ -419,9 +528,9 @@ async def monitor_videos():
 
                         old["comments"] = video["comments"]
 
-                    # ======================
+                    # =======================
                     # SHARES
-                    # ======================
+                    # =======================
 
                     if video["shares"] > old["shares"]:
 
@@ -488,7 +597,7 @@ async def main():
 
     await bot.send_message(
         CHAT_ID,
-        "🔥 TikTok Monitor запущен!"
+        "🔥 TikTok Monitor успешно запущен!"
     )
 
     await asyncio.gather(
