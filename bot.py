@@ -2,6 +2,7 @@ import asyncio
 import requests
 import re
 import os
+import json
 
 from datetime import datetime
 
@@ -19,19 +20,15 @@ from aiogram.types import (
 # TELEGRAM
 # =====================================================
 
-TELEGRAM_BOT_TOKEN = "8976617638:AAEuq3jTKCr9vL61wuCFhOIGBq8d0hheAIA"
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
 
-CHAT_ID = "5296078628"
+CHAT_ID = "YOUR_CHAT_ID"
 
 # =====================================================
 # TIKTOK
 # =====================================================
 
 TIKTOK_USERNAME = "stxz.ed1ts"
-
-CLIENT_KEY = "aws9c59qtbjw446y"
-
-CLIENT_SECRET = "rriXqmqBtgQUkDcD3uzuuBEUikxxa0NT"
 
 # =====================================================
 # BOT
@@ -47,14 +44,14 @@ dp = Dispatcher()
 
 old_followers = 0
 
-old_video = {}
+old_video = None
 
 stats_30min = {
+    "followers": 0,
     "likes": 0,
-    "views": 0,
     "comments": 0,
     "shares": 0,
-    "followers": 0
+    "views": 0
 }
 
 # =====================================================
@@ -90,7 +87,10 @@ def get_html():
         url = f"https://www.tiktok.com/@{TIKTOK_USERNAME}"
 
         headers = {
-            "User-Agent": "Mozilla/5.0"
+            "User-Agent": (
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64)"
+            )
         }
 
         response = requests.get(
@@ -108,29 +108,60 @@ def get_html():
         return ""
 
 # =====================================================
-# FOLLOWERS
+# PROFILE INFO
 # =====================================================
 
-def get_followers():
+def get_profile_stats():
 
     try:
 
         html = get_html()
 
-        match = re.search(
+        followers_match = re.search(
             r'"followerCount":(\d+)',
             html
         )
 
-        if match:
+        likes_match = re.search(
+            r'"heartCount":(\d+)',
+            html
+        )
 
-            return int(match.group(1))
+        following_match = re.search(
+            r'"followingCount":(\d+)',
+            html
+        )
+
+        followers = (
+            int(followers_match.group(1))
+            if followers_match else 0
+        )
+
+        likes = (
+            int(likes_match.group(1))
+            if likes_match else 0
+        )
+
+        following = (
+            int(following_match.group(1))
+            if following_match else 0
+        )
+
+        return {
+            "followers": followers,
+            "likes": likes,
+            "following": following
+        }
 
     except Exception as e:
 
-        print("FOLLOWERS ERROR:", e)
+        print("PROFILE STATS ERROR:", e)
 
-    return 0
+        return {
+            "followers": 0,
+            "likes": 0,
+            "following": 0
+        }
 
 # =====================================================
 # LAST VIDEO
@@ -143,21 +174,29 @@ def get_last_video():
         html = get_html()
 
         # =========================================
-        # VIDEO ID
+        # VIDEO IDS
         # =========================================
 
-        id_match = re.search(
-            r'"id":"(\d+)"',
+        ids = re.findall(
+            r'"video":{"id":"(\d+)"',
             html
         )
 
+        if not ids:
+
+            ids = re.findall(
+                r'"id":"(\d+)"',
+                html
+            )
+
+        video_id = ids[0]
+
         # =========================================
-        # TITLE
+        # VIDEO URL
         # =========================================
 
-        title_match = re.search(
-            r'"desc":"(.*?)"',
-            html
+        video_url = (
+            f"https://www.tiktok.com/@{TIKTOK_USERNAME}/video/{video_id}"
         )
 
         # =========================================
@@ -196,14 +235,13 @@ def get_last_video():
             html
         )
 
-        video_id = (
-            id_match.group(1)
-            if id_match else "0"
-        )
+        # =========================================
+        # TITLE
+        # =========================================
 
-        title = (
-            title_match.group(1)
-            if title_match else "TikTok Video"
+        title_match = re.search(
+            r'"desc":"(.*?)"',
+            html
         )
 
         likes = (
@@ -226,8 +264,9 @@ def get_last_video():
             if views_match else 0
         )
 
-        video_url = (
-            f"https://www.tiktok.com/@{TIKTOK_USERNAME}/video/{video_id}"
+        title = (
+            title_match.group(1)
+            if title_match else "TikTok Video"
         )
 
         return {
@@ -247,29 +286,25 @@ def get_last_video():
         return None
 
 # =====================================================
-# SHADOW BAN
+# SHADOW BAN CHECK
 # =====================================================
 
-def shadow_ban_check(video):
+def check_shadow(video):
 
     try:
 
-        followers = get_followers()
+        profile = get_profile_stats()
+
+        followers = profile["followers"]
+
+        views = video["views"]
 
         if followers == 0:
 
             return "❌ Нет данных"
 
-        views = video["views"]
-
-        likes = video["likes"]
-
         reach = (
             views / followers
-        ) * 100
-
-        engagement = (
-            likes / max(views, 1)
         ) * 100
 
         if reach < 5:
@@ -278,21 +313,13 @@ def shadow_ban_check(video):
 ⚠️ Возможен теневой бан
 
 • Очень маленький охват
-• Видео не попадают в рекомендации
-"""
-
-        if engagement < 1:
-
-            return """
-⚠️ Возможен теневой бан
-
-• Очень низкая активность
+• Видео плохо залетают
 """
 
         return """
 ✅ Теневого бана нет
 
-Видео получают нормальный охват
+Видео набирают просмотры нормально
 """
 
     except Exception as e:
@@ -302,10 +329,10 @@ def shadow_ban_check(video):
         return "❌ Ошибка проверки"
 
 # =====================================================
-# BEAUTIFUL MESSAGE
+# SEND MESSAGE
 # =====================================================
 
-async def send_message(title, text):
+async def send_log(title, text):
 
     final_text = f"""
 🔥 <b>{title}</b>
@@ -329,17 +356,17 @@ async def send_message(title, text):
 @dp.message(CommandStart())
 async def start_handler(message: Message):
 
+    profile = get_profile_stats()
+
     video = get_last_video()
 
     if not video:
 
         await message.answer(
-            "❌ Не удалось получить видео"
+            "❌ Не удалось получить данные"
         )
 
         return
-
-    followers = get_followers()
 
     text = f"""
 👋 <b>TikTok Monitor</b>
@@ -351,7 +378,13 @@ async def start_handler(message: Message):
 ━━━━━━━━━━━━━━━
 
 👥 Подписчики:
-<b>{followers}</b>
+<b>{profile['followers']}</b>
+
+❤️ Всего лайков:
+<b>{profile['likes']}</b>
+
+➕ Подписок:
+<b>{profile['following']}</b>
 
 ━━━━━━━━━━━━━━━
 
@@ -383,7 +416,7 @@ async def start_handler(message: Message):
 @dp.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message):
 
-    followers = get_followers()
+    profile = get_profile_stats()
 
     text = f"""
 📊 <b>Статистика за 30 минут</b>
@@ -407,8 +440,11 @@ async def stats_handler(message: Message):
 
 ━━━━━━━━━━━━━━━
 
-👤 Всего подписчиков:
-<b>{followers}</b>
+👥 Всего подписчиков:
+<b>{profile['followers']}</b>
+
+❤️ Всего лайков:
+<b>{profile['likes']}</b>
 """
 
     await message.answer(
@@ -465,7 +501,15 @@ async def shadow_handler(message: Message):
 
     video = get_last_video()
 
-    result = shadow_ban_check(video)
+    if not video:
+
+        await message.answer(
+            "❌ Нет данных"
+        )
+
+        return
+
+    result = check_shadow(video)
 
     await message.answer(
         result,
@@ -479,6 +523,8 @@ async def shadow_handler(message: Message):
 @dp.message(F.text == "🔥 Проверить")
 async def check_handler(message: Message):
 
+    profile = get_profile_stats()
+
     video = get_last_video()
 
     if not video:
@@ -490,11 +536,19 @@ async def check_handler(message: Message):
         return
 
     text = f"""
-🔥 <b>Проверка завершена</b>
+🔥 <b>Актуальная информация</b>
 
 ━━━━━━━━━━━━━━━
 
-🎬 <b>{video['title']}</b>
+👥 Подписчики:
+<b>{profile['followers']}</b>
+
+❤️ Всего лайков:
+<b>{profile['likes']}</b>
+
+━━━━━━━━━━━━━━━
+
+🎬 Последнее видео
 
 ❤️ {video['likes']}
 💬 {video['comments']}
@@ -525,25 +579,29 @@ async def monitor_followers():
 
         try:
 
-            followers = get_followers()
+            profile = get_profile_stats()
+
+            followers = profile["followers"]
 
             if old_followers == 0:
 
                 old_followers = followers
 
-            if followers > old_followers:
+            elif followers > old_followers:
 
                 diff = followers - old_followers
 
                 stats_30min["followers"] += diff
 
-                await send_message(
+                print("NEW FOLLOWER")
+
+                await send_log(
                     "👥 Новый подписчик",
                     f"""
-➕ Новых:
+➕ Подписчиков:
 <b>+{diff}</b>
 
-👤 Всего:
+👥 Всего:
 <b>{followers}</b>
 """
                 )
@@ -552,9 +610,9 @@ async def monitor_followers():
 
         except Exception as e:
 
-            print("FOLLOWERS MONITOR ERROR:", e)
+            print("FOLLOWERS ERROR:", e)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(10)
 
 # =====================================================
 # MONITOR VIDEO
@@ -572,22 +630,28 @@ async def monitor_video():
 
             if not video:
 
-                await asyncio.sleep(60)
+                await asyncio.sleep(10)
 
                 continue
+
+            # =====================================
+            # FIRST START
+            # =====================================
+
+            if old_video is None:
+
+                old_video = video
 
             # =====================================
             # NEW VIDEO
             # =====================================
 
-            if old_video == {}:
-
-                old_video = video
-
             elif video["id"] != old_video["id"]:
 
-                await send_message(
-                    "🎬 Выложено новое видео",
+                print("NEW VIDEO")
+
+                await send_log(
+                    "🎬 Новое видео",
                     f"""
 ❤️ {video['likes']}
 💬 {video['comments']}
@@ -617,7 +681,9 @@ async def monitor_video():
 
                     stats_30min["likes"] += diff
 
-                    await send_message(
+                    print("NEW LIKES")
+
+                    await send_log(
                         "❤️ Новые лайки",
                         f"""
 ➕ Лайков:
@@ -640,13 +706,13 @@ async def monitor_video():
 
                     stats_30min["comments"] += diff
 
-                    await send_message(
+                    print("NEW COMMENTS")
+
+                    await send_log(
                         "💬 Новый комментарий",
                         f"""
 ➕ Комментариев:
 <b>+{diff}</b>
-
-🎬 На последнем видео
 """
                     )
 
@@ -665,7 +731,9 @@ async def monitor_video():
 
                     stats_30min["shares"] += diff
 
-                    await send_message(
+                    print("NEW SHARES")
+
+                    await send_log(
                         "📤 Новый репост",
                         f"""
 ➕ Репостов:
@@ -694,7 +762,7 @@ async def monitor_video():
 
             print("VIDEO MONITOR ERROR:", e)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(10)
 
 # =====================================================
 # RESET STATS
@@ -706,11 +774,13 @@ async def reset_stats():
 
         await asyncio.sleep(1800)
 
+        stats_30min["followers"] = 0
         stats_30min["likes"] = 0
-        stats_30min["views"] = 0
         stats_30min["comments"] = 0
         stats_30min["shares"] = 0
-        stats_30min["followers"] = 0
+        stats_30min["views"] = 0
+
+        print("STATS RESET")
 
 # =====================================================
 # WEB SERVER
@@ -756,7 +826,7 @@ async def main():
 
     await bot.send_message(
         CHAT_ID,
-        "🔥 TikTok Monitor запущен!"
+        "🔥 TikTok Monitor успешно запущен"
     )
 
     asyncio.create_task(
