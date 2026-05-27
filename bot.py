@@ -2,6 +2,7 @@ import asyncio
 import requests
 import re
 import os
+import json
 
 from datetime import datetime
 from aiohttp import web
@@ -14,35 +15,31 @@ from aiogram.types import (
     KeyboardButton
 )
 
-# =========================================================
+# =====================================================
 # TELEGRAM
-# =========================================================
+# =====================================================
 
 TELEGRAM_BOT_TOKEN = "8976617638:AAEuq3jTKCr9vL61wuCFhOIGBq8d0hheAIA"
 
 CHAT_ID = "5296078628"
 
-# =========================================================
+# =====================================================
 # TIKTOK
-# =========================================================
+# =====================================================
 
 TIKTOK_USERNAME = "stxz.ed1ts"
 
-CLIENT_KEY = "aws9c59qtbjw446y"
-
-CLIENT_SECRET = "rriXqmqBtgQUkDcD3uzuuBEUikxxa0NT"
-
-# =========================================================
+# =====================================================
 # BOT
-# =========================================================
+# =====================================================
 
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 dp = Dispatcher()
 
-# =========================================================
+# =====================================================
 # MEMORY
-# =========================================================
+# =====================================================
 
 old_followers = 0
 
@@ -56,9 +53,9 @@ stats_30min = {
     "views": 0
 }
 
-# =========================================================
+# =====================================================
 # BUTTONS
-# =========================================================
+# =====================================================
 
 keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -78,9 +75,9 @@ keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# =========================================================
-# HTML
-# =========================================================
+# =====================================================
+# GET HTML
+# =====================================================
 
 def get_html():
 
@@ -109,9 +106,9 @@ def get_html():
 
         return ""
 
-# =========================================================
+# =====================================================
 # PROFILE
-# =========================================================
+# =====================================================
 
 def get_profile_stats():
 
@@ -119,40 +116,25 @@ def get_profile_stats():
 
         html = get_html()
 
-        followers_match = re.search(
+        followers = re.search(
             r'"followerCount":(\d+)',
             html
         )
 
-        likes_match = re.search(
-            r'"heartCount":(\d+)',
-            html
-        )
-
-        following_match = re.search(
+        following = re.search(
             r'"followingCount":(\d+)',
             html
         )
 
-        followers = (
-            int(followers_match.group(1))
-            if followers_match else 0
-        )
-
-        likes = (
-            int(likes_match.group(1))
-            if likes_match else 0
-        )
-
-        following = (
-            int(following_match.group(1))
-            if following_match else 0
+        likes = re.search(
+            r'"heartCount":(\d+)',
+            html
         )
 
         return {
-            "followers": followers,
-            "likes": likes,
-            "following": following
+            "followers": int(followers.group(1)) if followers else 0,
+            "following": int(following.group(1)) if following else 0,
+            "likes": int(likes.group(1)) if likes else 0
         }
 
     except Exception as e:
@@ -161,13 +143,13 @@ def get_profile_stats():
 
         return {
             "followers": 0,
-            "likes": 0,
-            "following": 0
+            "following": 0,
+            "likes": 0
         }
 
-# =========================================================
-# LAST VIDEO
-# =========================================================
+# =====================================================
+# LAST VIDEO REAL PARSE
+# =====================================================
 
 def get_last_video():
 
@@ -175,69 +157,58 @@ def get_last_video():
 
         html = get_html()
 
-        ids = re.findall(
-            r'"video":{"id":"(\d+)"',
+        # =========================================
+        # НАХОДИМ JSON
+        # =========================================
+
+        pattern = r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">(.*?)</script>'
+
+        match = re.search(
+            pattern,
             html
         )
 
-        if not ids:
+        if not match:
 
-            ids = re.findall(
-                r'"id":"(\d+)"',
-                html
-            )
+            return None
 
-        video_id = ids[0]
+        raw_json = match.group(1)
 
-        likes_match = re.search(
-            r'"diggCount":(\d+)',
-            html
+        data = json.loads(raw_json)
+
+        # =========================================
+        # POSTS
+        # =========================================
+
+        items = (
+            data["__DEFAULT_SCOPE__"]
+            ["webapp.user-detail"]
+            ["itemList"]
         )
 
-        comments_match = re.search(
-            r'"commentCount":(\d+)',
-            html
-        )
+        if not items:
 
-        shares_match = re.search(
-            r'"shareCount":(\d+)',
-            html
-        )
+            return None
 
-        views_match = re.search(
-            r'"playCount":(\d+)',
-            html
-        )
+        # =========================================
+        # LAST VIDEO
+        # =========================================
 
-        desc_match = re.search(
-            r'"desc":"(.*?)"',
-            html
-        )
+        last = items[0]
 
-        likes = (
-            int(likes_match.group(1))
-            if likes_match else 0
-        )
+        video_id = last["id"]
 
-        comments = (
-            int(comments_match.group(1))
-            if comments_match else 0
-        )
+        desc = last.get("desc", "TikTok Video")
 
-        shares = (
-            int(shares_match.group(1))
-            if shares_match else 0
-        )
+        stats = last.get("stats", {})
 
-        views = (
-            int(views_match.group(1))
-            if views_match else 0
-        )
+        likes = stats.get("diggCount", 0)
 
-        desc = (
-            desc_match.group(1)
-            if desc_match else "TikTok Video"
-        )
+        comments = stats.get("commentCount", 0)
+
+        shares = stats.get("shareCount", 0)
+
+        views = stats.get("playCount", 0)
 
         url = (
             f"https://www.tiktok.com/@{TIKTOK_USERNAME}/video/{video_id}"
@@ -245,11 +216,11 @@ def get_last_video():
 
         return {
             "id": video_id,
+            "desc": desc,
             "likes": likes,
             "comments": comments,
             "shares": shares,
             "views": views,
-            "desc": desc,
             "url": url
         }
 
@@ -259,9 +230,9 @@ def get_last_video():
 
         return None
 
-# =========================================================
-# SHADOW CHECK
-# =========================================================
+# =====================================================
+# SHADOW BAN
+# =====================================================
 
 def check_shadow(video):
 
@@ -286,27 +257,29 @@ def check_shadow(video):
             return """
 ⚠️ Возможен теневой бан
 
-• Очень маленький охват
-• Видео плохо продвигаются
+• Маленький охват
+• Видео плохо продвигается
 """
 
         return """
 ✅ Теневого бана нет
 
-Видео набирают просмотры нормально
+Охват выглядит нормально
 """
 
-    except:
+    except Exception as e:
 
-        return "❌ Ошибка проверки"
+        print("SHADOW ERROR:", e)
 
-# =========================================================
+        return "❌ Ошибка"
+
+# =====================================================
 # SEND LOG
-# =========================================================
+# =====================================================
 
 async def send_log(title, text):
 
-    msg = f"""
+    final = f"""
 🔥 <b>{title}</b>
 
 {text}
@@ -316,14 +289,14 @@ async def send_log(title, text):
 
     await bot.send_message(
         CHAT_ID,
-        msg,
+        final,
         parse_mode="HTML",
         disable_web_page_preview=False
     )
 
-# =========================================================
+# =====================================================
 # START
-# =========================================================
+# =====================================================
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
@@ -335,7 +308,7 @@ async def start_handler(message: Message):
     if not video:
 
         await message.answer(
-            "❌ Ошибка загрузки"
+            "❌ Не удалось получить данные"
         )
 
         return
@@ -381,9 +354,9 @@ async def start_handler(message: Message):
         disable_web_page_preview=False
     )
 
-# =========================================================
-# STATS
-# =========================================================
+# =====================================================
+# STATS BUTTON
+# =====================================================
 
 @dp.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message):
@@ -412,7 +385,7 @@ async def stats_handler(message: Message):
 
 ━━━━━━━━━━━━━━━
 
-👥 Всего:
+👥 Всего подписчиков:
 <b>{profile['followers']}</b>
 
 ❤️ Всего лайков:
@@ -424,9 +397,9 @@ async def stats_handler(message: Message):
         parse_mode="HTML"
     )
 
-# =========================================================
-# LAST VIDEO
-# =========================================================
+# =====================================================
+# LAST VIDEO BUTTON
+# =====================================================
 
 @dp.message(F.text == "🎬 Последнее видео")
 async def last_video_handler(message: Message):
@@ -464,9 +437,9 @@ async def last_video_handler(message: Message):
         disable_web_page_preview=False
     )
 
-# =========================================================
+# =====================================================
 # SHADOW BUTTON
-# =========================================================
+# =====================================================
 
 @dp.message(F.text == "👁 Теневой бан")
 async def shadow_handler(message: Message):
@@ -476,7 +449,7 @@ async def shadow_handler(message: Message):
     if not video:
 
         await message.answer(
-            "❌ Ошибка проверки"
+            "❌ Ошибка"
         )
 
         return
@@ -488,9 +461,9 @@ async def shadow_handler(message: Message):
         parse_mode="HTML"
     )
 
-# =========================================================
+# =====================================================
 # CHECK BUTTON
-# =========================================================
+# =====================================================
 
 @dp.message(F.text == "🔥 Проверить")
 async def check_handler(message: Message):
@@ -498,6 +471,14 @@ async def check_handler(message: Message):
     profile = get_profile_stats()
 
     video = get_last_video()
+
+    if not video:
+
+        await message.answer(
+            "❌ Нет данных"
+        )
+
+        return
 
     text = f"""
 🔥 <b>Актуальная информация</b>
@@ -531,9 +512,9 @@ async def check_handler(message: Message):
         parse_mode="HTML"
     )
 
-# =========================================================
+# =====================================================
 # FOLLOWERS MONITOR
-# =========================================================
+# =====================================================
 
 async def monitor_followers():
 
@@ -574,11 +555,11 @@ async def monitor_followers():
 
             print("FOLLOWERS ERROR:", e)
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(10)
 
-# =========================================================
+# =====================================================
 # VIDEO MONITOR
-# =========================================================
+# =====================================================
 
 async def monitor_video():
 
@@ -592,13 +573,21 @@ async def monitor_video():
 
             if not video:
 
-                await asyncio.sleep(15)
+                await asyncio.sleep(10)
 
                 continue
+
+            # =====================================
+            # FIRST START
+            # =====================================
 
             if old_video is None:
 
                 old_video = video
+
+            # =====================================
+            # NEW VIDEO
+            # =====================================
 
             elif video["id"] != old_video["id"]:
 
@@ -620,6 +609,10 @@ async def monitor_video():
 
             else:
 
+                # =================================
+                # LIKES
+                # =================================
+
                 if video["likes"] > old_video["likes"]:
 
                     diff = (
@@ -638,6 +631,10 @@ async def monitor_video():
                     )
 
                     old_video["likes"] = video["likes"]
+
+                # =================================
+                # COMMENTS
+                # =================================
 
                 if video["comments"] > old_video["comments"]:
 
@@ -658,6 +655,10 @@ async def monitor_video():
 
                     old_video["comments"] = video["comments"]
 
+                # =================================
+                # SHARES
+                # =================================
+
                 if video["shares"] > old_video["shares"]:
 
                     diff = (
@@ -677,6 +678,10 @@ async def monitor_video():
 
                     old_video["shares"] = video["shares"]
 
+                # =================================
+                # VIEWS
+                # =================================
+
                 if video["views"] > old_video["views"]:
 
                     diff = (
@@ -692,11 +697,11 @@ async def monitor_video():
 
             print("VIDEO ERROR:", e)
 
-        await asyncio.sleep(15)
+        await asyncio.sleep(10)
 
-# =========================================================
+# =====================================================
 # RESET STATS
-# =========================================================
+# =====================================================
 
 async def reset_stats():
 
@@ -710,9 +715,9 @@ async def reset_stats():
         stats_30min["shares"] = 0
         stats_30min["views"] = 0
 
-# =========================================================
+# =====================================================
 # WEB SERVER
-# =========================================================
+# =====================================================
 
 async def home(request):
 
@@ -742,9 +747,9 @@ async def start_web():
 
     await site.start()
 
-# =========================================================
+# =====================================================
 # MAIN
-# =========================================================
+# =====================================================
 
 async def main():
 
@@ -767,9 +772,9 @@ async def main():
         reset_stats()
     )
 
-# =========================================================
+# =====================================================
 # RUN
-# =========================================================
+# =====================================================
 
 if __name__ == "__main__":
 
