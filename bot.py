@@ -3,7 +3,6 @@ from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils import executor
 
 # ==================================================
 # ДАННЫЕ
